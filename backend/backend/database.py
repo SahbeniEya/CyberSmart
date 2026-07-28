@@ -83,6 +83,7 @@ class GithubLink(Base):
 
     username = Column(String(100), primary_key=True)
     repo_url = Column(String(500), nullable=False)
+    token    = Column(String(500), nullable=True)
 
 
 # ── Create tables on startup ───────────────────────────────────────────────
@@ -268,3 +269,19 @@ def db_get_github_link(username: str) -> str | None:
     with Session(engine) as s:
         link = s.get(GithubLink, username)
         return link.repo_url if link else None
+
+
+def db_set_github_token(username: str, token: str) -> None:
+    with Session(engine) as s:
+        link = s.get(GithubLink, username)
+        if link:
+            link.token = token
+        else:
+            s.add(GithubLink(username=username, repo_url="", token=token))
+        s.commit()
+
+
+def db_get_github_token(username: str) -> str | None:
+    with Session(engine) as s:
+        link = s.get(GithubLink, username)
+        return link.token if link else None

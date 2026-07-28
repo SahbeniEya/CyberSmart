@@ -1,4 +1,5 @@
 # main.py — FastAPI backend
+from github_actions import get_workflow_runs, get_run_jobs, get_run_logs, trigger_workflow
 
 import uuid
 import asyncio
@@ -359,3 +360,82 @@ def get_me(user=Depends(get_current_user)):
 @app.get("/health")
 def health():
     return {"status": "ok", "version": "2.0.0"}
+
+
+# ── GitHub Token storage ──────────────────────────────────────────────────
+# For simplicity, store tokens alongside the github_links.
+# Add to database.py's GithubLink model:
+#   token = Column(String(500), nullable=True)
+
+class GithubTokenRequest(BaseModel):
+    token: str
+
+@app.post("/github/token")
+def set_github_token(req: GithubTokenRequest, user=Depends(require_devops_or_admin)):
+    """Store GitHub Personal Access Token for API access."""
+    from database import db_set_github_token
+    db_set_github_token(user["username"], req.token)
+    return {"status": "saved"}
+
+@app.get("/github/token")
+def get_github_token(user=Depends(require_devops_or_admin)):
+    from database import db_get_github_token
+    token = db_get_github_token(user["username"])
+    return {"has_token": bool(token)}
+
+
+# ── Pipeline runs ─────────────────────────────────────────────────────────
+
+@app.get("/github/runs")
+def list_pipeline_runs(user=Depends(require_devops_or_admin)):
+    """Get recent CI/CD pipeline runs from GitHub Actions."""
+    from database import db_get_github_link, db_get_github_token
+    repo_url = db_get_github_link(user["username"])
+    token = db_get_github_token(user["username"])
+    if not repo_url or not token:
+        raise HTTPException(status_code=400, detail="GitHub repo and token required. Configure in DevOps settings.")
+    from github_actions import get_workflow_runs
+    runs = get_workflow_runs(repo_url, token)
+    return runs
+
+
+@app.get("/github/runs/{run_id}/jobs")
+def get_pipeline_jobs(run_id: int, user=Depends(require_devops_or_admin)):
+    """Get jobs and steps for a specific pipeline run."""
+    from database import db_get_github_link, db_get_github_token
+    repo_url = db_get_github_link(user["username"])
+    token = db_get_github_token(user["username"])
+    if not repo_url or not token:
+        raise HTTPException(status_code=400, detail="GitHub repo and token required.")
+    from github_actions import get_run_jobs
+    return get_run_jobs(repo_url, token, run_id)
+
+
+@app.get("/github/runs/{run_id}/logs")
+def get_pipeline_logs(run_id: int, user=Depends(require_devops_or_admin)):
+    """Get download URL for pipeline run logs."""
+    from database import db_get_github_link, db_get_github_token
+    repo_url = db_get_github_link(user["username"])
+    token = db_get_github_token(user["username"])
+    if not repo_url or not token:
+        raise HTTPException(status_code=400, detail="GitHub repo and token required.")
+    from github_actions import get_run_logs
+    url = get_run_logs(repo_url, token, run_id)
+    if not url:
+        raise HTTPException(status_code=404, detail="Logs not available")
+    return {"logs_url": url}
+
+
+@app.post("/github/trigger")
+def trigger_pipeline(user=Depends(require_devops_or_admin)):
+    """Trigger the CI/CD pipeline manually."""
+    from database import db_get_github_link, db_get_github_token
+    repo_url = db_get_github_link(user["username"])
+    token = db_get_github_token(user["username"])
+    if not repo_url or not token:
+        raise HTTPException(status_code=400, detail="GitHub repo and token required.")
+    from github_actions import trigger_workflow
+    success = trigger_workflow(repo_url, token)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to trigger pipeline. Make sure ci.yml has workflow_dispatch enabled.")
+    return {"status": "triggered"}
