@@ -1,0 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --accent: #00ff88;
+  --accent-dim: rgba(0,255,136,0.15);
+}
+
+body {
+  @apply bg-dark-900 text-gray-100 font-sans;
+  min-height: 100vh;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar       { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #111827; }
+::-webkit-scrollbar-thumb { background: #243044; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #00ff88; }
+
+/* Terminal text */
+.terminal {
+  @apply font-mono text-sm bg-dark-900 rounded-lg border border-dark-600 p-4 overflow-y-auto;
+  max-height: 420px;
+}
+
+/* Glowing button */
+.btn-primary {
+  @apply bg-accent-green text-dark-900 font-mono font-bold px-6 py-2.5 rounded
+         hover:brightness-110 transition-all duration-200
+         disabled:opacity-40 disabled:cursor-not-allowed;
+  box-shadow: 0 0 20px rgba(0,255,136,0.25);
+}
+
+.btn-secondary {
+  @apply border border-dark-600 text-gray-300 font-mono px-5 py-2.5 rounded
+         hover:border-accent-green hover:text-accent-green transition-all duration-200;
+}
+
+/* Card */
+.card {
+  @apply bg-dark-800 border border-dark-600 rounded-xl p-5;
+}
+
+/* Status badges */
+.badge-running  { @apply text-xs font-mono px-2 py-0.5 rounded bg-blue-900/50  text-accent-blue  border border-blue-800; }
+.badge-finished { @apply text-xs font-mono px-2 py-0.5 rounded bg-green-900/50 text-accent-green border border-green-800; }
+.badge-error    { @apply text-xs font-mono px-2 py-0.5 rounded bg-red-900/50   text-accent-red   border border-red-800; }
+
+/* Input */
+.input {
+  @apply w-full bg-dark-700 border border-dark-600 text-gray-100 rounded px-4 py-2.5
+         font-mono text-sm placeholder-gray-600
+         focus:outline-none focus:border-accent-green transition-colors;
+}
