@@ -40,7 +40,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-SECRET_KEY = "pentest-ai-secret-2025"
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-change-in-production")
 ALGORITHM  = "HS256"
 security   = HTTPBearer()
 
