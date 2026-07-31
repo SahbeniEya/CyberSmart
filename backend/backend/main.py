@@ -1,5 +1,6 @@
 # main.py — FastAPI backend
 from github_actions import get_workflow_runs, get_run_jobs, get_run_logs, trigger_workflow
+from monitoring import get_monitoring_data
 
 import uuid
 import asyncio
@@ -21,6 +22,12 @@ from database import (
     db_set_github_link, db_get_github_link,
     db_create_user, db_get_user, db_list_users, db_update_user, db_delete_user,
     verify_password,
+)
+
+from notifications import (
+    notify_scan_started, notify_scan_finished, notify_critical_vuln,
+    notify_scan_error, notify_pipeline_triggered,
+    get_notifications, get_unread_count, mark_as_read, mark_all_read,
 )
 
 # ── App setup ──────────────────────────────────────────────────────────────
@@ -226,6 +233,8 @@ class ScanResponse(BaseModel):
 def run_scan_background(scan_id: str, target: str, model: str, max_steps: int,
                           agent_type: str = "unknown"):
     def scan_runner():
+        target = scans_db[scan_id].get("target", "")
+        started_by = scans_db[scan_id].get("started_by", "")
         try:
             final_state = run_pentest(scan_id, target, model, max_steps,
                                        agent_type=agent_type)
@@ -242,6 +251,15 @@ def run_scan_background(scan_id: str, target: str, model: str, max_steps: int,
             }
             scans_db[scan_id].update(updates)
             db_update_scan(scan_id, updates)
+            vuln_count = len(updates.get("vulnerabilities", []))
+            cvss = updates.get("cvss_max", 0)
+            #scans_db[scan_id].get("started_by", "")
+            #target = scans_db[scan_id].get("target", "")
+            notify_scan_finished(started_by, scan_id, target, vuln_count, cvss)
+            if cvss >= 9.0:
+              notify_critical_vuln(started_by, scan_id, target, cvss)
+
+
         except Exception as e:
             import traceback
             print(f"   ❌ Scan error: {e}")
@@ -249,9 +267,12 @@ def run_scan_background(scan_id: str, target: str, model: str, max_steps: int,
             scans_db[scan_id]["status"] = "error"
             scans_db[scan_id]["error"]  = str(e)
             db_update_scan(scan_id, {"status": "error", "error": str(e)})
+            started_by = scans_db[scan_id].get("started_by", "")
+            target = scans_db[scan_id].get("target", "")
+            notify_scan_error(started_by, scan_id, target, str(e))
+
 
     Thread(target=scan_runner, daemon=True).start()
-
 
 @app.post("/scans", response_model=ScanResponse)
 def create_scan(req: ScanRequest, user=Depends(get_current_user)):
@@ -281,6 +302,9 @@ def create_scan(req: ScanRequest, user=Depends(get_current_user)):
     run_scan_background(scan_id, req.target, req.model, req.max_steps,
                          agent_type=req.agent_type)
     return ScanResponse(**{k: scan[k] for k in ScanResponse.model_fields})
+
+    notify_scan_started(user["username"], scan_id, req.target)
+
 
 
 @app.get("/scans")
@@ -336,12 +360,12 @@ class GithubLinkRequest(BaseModel):
 
 @app.post("/github/link")
 def set_github_link(req: GithubLinkRequest, user=Depends(require_devops_or_admin)):
-    db_set_github_link(user["username"], req.repo_url)
-    return {"username": user["username"], "repo_url": req.repo_url}
+    db_set_github_link("_global", req.repo_url)
+    return {"repo_url": req.repo_url}
 
 @app.get("/github/link")
 def get_github_link(user=Depends(get_current_user)):
-    repo_url = db_get_github_link(user["username"])
+    repo_url = db_get_github_link("_global")
     return {"repo_url": repo_url}
 
 
@@ -353,6 +377,33 @@ def get_me(user=Depends(get_current_user)):
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     return {"username": db_user["username"], "email": db_user["email"], "role": db_user["role"]}
+
+
+@app.get("/monitoring")
+def monitoring(user=Depends(get_current_user)):
+    return get_monitoring_data(scans_db, ws_clients)
+
+@app.get("/notifications")
+def list_notifications(user=Depends(get_current_user)):
+    """Get user's notifications."""
+    return {
+        "notifications": get_notifications(user["username"]),
+        "unread": get_unread_count(user["username"]),
+    }
+ 
+ 
+@app.post("/notifications/{notif_id}/read")
+def read_notification(notif_id: int, user=Depends(get_current_user)):
+    """Mark a notification as read."""
+    mark_as_read(user["username"], notif_id)
+    return {"status": "ok"}
+ 
+ 
+@app.post("/notifications/read-all")
+def read_all_notifications(user=Depends(get_current_user)):
+    """Mark all notifications as read."""
+    count = mark_all_read(user["username"])
+    return {"marked": count}
 
 
 # ── Health check ───────────────────────────────────────────────────────────
@@ -374,13 +425,13 @@ class GithubTokenRequest(BaseModel):
 def set_github_token(req: GithubTokenRequest, user=Depends(require_devops_or_admin)):
     """Store GitHub Personal Access Token for API access."""
     from database import db_set_github_token
-    db_set_github_token(user["username"], req.token)
+    db_set_github_token("_global", req.token)
     return {"status": "saved"}
 
 @app.get("/github/token")
 def get_github_token(user=Depends(require_devops_or_admin)):
     from database import db_get_github_token
-    token = db_get_github_token(user["username"])
+    token = db_get_github_token("_global")
     return {"has_token": bool(token)}
 
 
@@ -390,8 +441,8 @@ def get_github_token(user=Depends(require_devops_or_admin)):
 def list_pipeline_runs(user=Depends(require_devops_or_admin)):
     """Get recent CI/CD pipeline runs from GitHub Actions."""
     from database import db_get_github_link, db_get_github_token
-    repo_url = db_get_github_link(user["username"])
-    token = db_get_github_token(user["username"])
+    repo_url = db_get_github_link("_global")
+    token = db_get_github_token("_global")
     if not repo_url or not token:
         raise HTTPException(status_code=400, detail="GitHub repo and token required. Configure in DevOps settings.")
     from github_actions import get_workflow_runs
@@ -403,8 +454,8 @@ def list_pipeline_runs(user=Depends(require_devops_or_admin)):
 def get_pipeline_jobs(run_id: int, user=Depends(require_devops_or_admin)):
     """Get jobs and steps for a specific pipeline run."""
     from database import db_get_github_link, db_get_github_token
-    repo_url = db_get_github_link(user["username"])
-    token = db_get_github_token(user["username"])
+    repo_url = db_get_github_link("_global")
+    token = db_get_github_token("_global")
     if not repo_url or not token:
         raise HTTPException(status_code=400, detail="GitHub repo and token required.")
     from github_actions import get_run_jobs
@@ -415,8 +466,8 @@ def get_pipeline_jobs(run_id: int, user=Depends(require_devops_or_admin)):
 def get_pipeline_logs(run_id: int, user=Depends(require_devops_or_admin)):
     """Get download URL for pipeline run logs."""
     from database import db_get_github_link, db_get_github_token
-    repo_url = db_get_github_link(user["username"])
-    token = db_get_github_token(user["username"])
+    repo_url = db_get_github_link("_global")
+    token = db_get_github_token("_global")
     if not repo_url or not token:
         raise HTTPException(status_code=400, detail="GitHub repo and token required.")
     from github_actions import get_run_logs
@@ -430,12 +481,22 @@ def get_pipeline_logs(run_id: int, user=Depends(require_devops_or_admin)):
 def trigger_pipeline(user=Depends(require_devops_or_admin)):
     """Trigger the CI/CD pipeline manually."""
     from database import db_get_github_link, db_get_github_token
-    repo_url = db_get_github_link(user["username"])
-    token = db_get_github_token(user["username"])
+    repo_url = db_get_github_link("_global")
+    token = db_get_github_token("_global")
     if not repo_url or not token:
         raise HTTPException(status_code=400, detail="GitHub repo and token required.")
     from github_actions import trigger_workflow
     success = trigger_workflow(repo_url, token)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to trigger pipeline. Make sure ci.yml has workflow_dispatch enabled.")
+    notify_pipeline_triggered(user["username"])
     return {"status": "triggered"}
+
+# ── Load persisted scans into memory on startup ──────────────────────
+def _load_scans_from_db():
+    saved = db_list_scans()
+    for scan in saved:
+        scans_db[scan["scan_id"]] = scan
+    print(f"   📂 Loaded {len(saved)} scans from database")
+
+_load_scans_from_db()

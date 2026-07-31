@@ -4,6 +4,8 @@ import { useAuth } from "../context/AuthContext"
 import { useNavigate, Link, useLocation } from "react-router-dom"
 import logoImg from "../assets/logo.png"
 
+import NotificationBell from "./NotificationBell"
+
 export default function Navbar() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
@@ -88,6 +90,7 @@ export default function Navbar() {
           <Link to="/history" className={`px-3 py-1.5 rounded text-xs font-mono transition-colors ${isActive("/history") ? "text-blue-500 dark:text-blue-400 bg-blue-500/10" : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"}`}>History</Link>
           {role === "admin" && <Link to="/admin/users" className={`px-3 py-1.5 rounded text-xs font-mono transition-colors ${isActive("/admin/users") ? "text-red-500 dark:text-red-400 bg-red-500/10" : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"}`}>Users</Link>}
           {(role === "devops" || role === "admin") && <Link to="/devops" className={`px-3 py-1.5 rounded text-xs font-mono transition-colors ${isActive("/devops") ? "text-yellow-500 dark:text-yellow-400 bg-yellow-500/10" : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"}`}>DevOps</Link>}
+          <Link to="/monitoring" className={`px-3 py-1.5 rounded text-xs font-mono transition-colors ${isActive("/monitoring") ? "text-green-500 dark:text-green-400 bg-green-500/10" : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"}`}>Monitor</Link>
         </div>
 
         <div className="flex items-center gap-2">
@@ -112,17 +115,8 @@ export default function Navbar() {
             </div>
           )}
 
-          <div ref={notifRef} className="relative">
-            <button onClick={() => setShowNotifs(!showNotifs)} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-dark-700 transition-colors text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></svg>
-            </button>
-            {showNotifs && (
-              <div className="absolute right-0 top-10 w-72 bg-white dark:bg-dark-700 border border-gray-200 dark:border-dark-600 rounded-xl shadow-xl p-4 z-50">
-                <p className="text-xs font-mono text-gray-500 dark:text-gray-400">No new notifications</p>
-              </div>
-            )}
-          </div>
-
+          <NotificationBell />
+          
           <button onClick={toggleTheme} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-dark-700 transition-colors text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">
             {dark ? (
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>

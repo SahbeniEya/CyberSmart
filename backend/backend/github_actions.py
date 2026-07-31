@@ -118,36 +118,51 @@ def get_run_logs(repo_url: str, token: str, run_id: int) -> str:
         return ""
 
 
-def trigger_workflow(repo_url: str, token: str, branch: str = "main") -> bool:
-    """Trigger the CI/CD workflow manually via workflow_dispatch."""
+def trigger_workflow(repo_url: str, token: str) -> bool:
     parsed = _parse_repo(repo_url)
     if not parsed:
+        print("   ⚠️ trigger: failed to parse repo URL")
         return False
     owner, repo = parsed
+    print(f"   🔍 trigger: {owner}/{repo}")
     try:
-        # Find the ci.yml workflow ID
         r = requests.get(
             f"{GITHUB_API}/repos/{owner}/{repo}/actions/workflows",
             headers=_headers(token),
             timeout=10,
         )
+        print(f"   🔍 trigger: list workflows → {r.status_code}")
         if r.status_code != 200:
+            print(f"   ⚠️ trigger: {r.text[:200]}")
             return False
 
         workflows = r.json().get("workflows", [])
+        print(f"   🔍 trigger: found {len(workflows)} workflows:")
+        for w in workflows:
+            print(f"      - '{w['name']}' ({w['path']}) id={w['id']}")
+
         ci_workflow = next((w for w in workflows if "ci" in w["name"].lower() or "ci.yml" in w["path"]), None)
         if not ci_workflow:
+            print("   ⚠️ trigger: no matching CI workflow found")
             return False
 
-        # Dispatch
-        r2 = requests.post(
-            f"{GITHUB_API}/repos/{owner}/{repo}/actions/workflows/{ci_workflow['id']}/dispatches",
-            headers=_headers(token),
-            json={"ref": branch},
-            timeout=10,
-        )
-        return r2.status_code == 204
-    except:
+        print(f"   🔍 trigger: matched workflow '{ci_workflow['name']}' id={ci_workflow['id']}")
+
+        for branch in ["main", "master"]:
+            print(f"   🔍 trigger: dispatching to branch '{branch}'...")
+            r2 = requests.post(
+                f"{GITHUB_API}/repos/{owner}/{repo}/actions/workflows/{ci_workflow['id']}/dispatches",
+                headers=_headers(token),
+                json={"ref": branch},
+                timeout=10,
+            )
+            print(f"   🔍 trigger: dispatch → {r2.status_code} {r2.text[:200] if r2.text else ''}")
+            if r2.status_code == 204:
+                return True
+
+        return False
+    except Exception as e:
+        print(f"   ⚠️ trigger exception: {e}")
         return False
 
 

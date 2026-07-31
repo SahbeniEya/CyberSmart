@@ -9,6 +9,7 @@ import History    from "./pages/History"
 import AdminUsers from "./pages/AdminUsers"
 import DevOps     from "./pages/DevOps"
 import Profile    from "./pages/Profile"
+import Monitoring from "./pages/Monitoring"
 
 function Protected({ children }) {
   const { user } = useAuth()
@@ -43,6 +44,7 @@ export default function App() {
           <Route path="/admin/users" element={<AdminOnly><AdminUsers /></AdminOnly>} />
           <Route path="/devops" element={<DevOpsOnly><DevOps /></DevOpsOnly>} />
           <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="/monitoring" element={<Protected><Monitoring /></Protected>} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
